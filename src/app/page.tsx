@@ -1,103 +1,331 @@
-import Image from "next/image";
+'use client';
+
+import { useAuth } from "../context/AuthContext";
+import Link from "next/link";
+import { useState, useEffect, useCallback } from "react";
+import { getCards, voteForCard } from "../lib/api";
+import TrapCard from "../components/TrapCard";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const { isAuthenticated, isLoading, connectWallet, error, walletAddress } = useAuth();
+  const [activeTab, setActiveTab] = useState('votes');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [cards, setCards] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [voteLoading, setVoteLoading] = useState<string | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
+  const [timeRemaining, setTimeRemaining] = useState<string>('');
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  // Format wallet address for display
+  const formatWalletAddress = (address: string) => {
+    if (!address) return '';
+    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
+  };
+
+  // Calculate time remaining until 1:00 AM EST
+  const calculateTimeRemaining = useCallback(() => {
+    const now = new Date();
+    const targetTime = new Date();
+    
+    // Set target time to 2:00 AM EST
+    targetTime.setHours(2, 0, 0, 0);
+    
+    // If it's already past 2:00 AM, set target to next day
+    if (now.getHours() >= 2) {
+      targetTime.setDate(targetTime.getDate() + 1);
+    }
+    
+    // Calculate difference in milliseconds
+    const diff = targetTime.getTime() - now.getTime();
+    
+    // Convert to hours, minutes, seconds
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+    
+    // Format as HH:MM:SS
+    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+  }, []);
+
+  // Update timer every second
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setTimeRemaining(calculateTimeRemaining());
+    }, 1000);
+    
+    // Initialize timer immediately
+    setTimeRemaining(calculateTimeRemaining());
+    
+    return () => clearInterval(timer);
+  }, [calculateTimeRemaining]);
+
+  // Fetch cards from the API regardless of authentication status
+  useEffect(() => {
+    fetchCards();
+  }, [activeTab]);
+
+  const fetchCards = async () => {
+    try {
+      setLoading(true);
+      setApiError(null);
+      
+      // Determine sort parameter based on active tab
+      const sortParam = activeTab === 'votes' ? 'votes' : 'createdAt';
+      
+      const response = await getCards({
+        sort: sortParam,
+        order: 'desc',
+        limit: 50
+      });
+      
+      setCards(response.cards);
+    } catch (err: any) {
+      console.error('Error fetching cards:', err);
+      setApiError(err.message || 'Failed to load cards');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle voting for a card
+  const handleVote = async (cardId: string) => {
+    if (!isAuthenticated) return;
+    
+    try {
+      setVoteLoading(cardId);
+      await voteForCard(cardId);
+      
+      // Update the card in the local state
+      setCards(prevCards => 
+        prevCards.map(card => 
+          card._id === cardId 
+            ? { 
+                ...card, 
+                votes: card.votes + 1,
+                voters: [...card.voters, walletAddress],
+                hasVoted: true
+              } 
+            : card
+        )
+      );
+    } catch (err: any) {
+      console.error('Error voting for card:', err);
+      alert(err.message || 'Failed to vote for card');
+    } finally {
+      setVoteLoading(null);
+    }
+  };
+
+  // Filter cards based on active tab and search query
+  const filteredCards = cards.filter(card => {
+    // Filter by search query
+    if (searchQuery && !card.title.toLowerCase().includes(searchQuery.toLowerCase())) {
+      return false;
+    }
+    
+    // Filter by tab
+    if (activeTab === 'my' && card.creator !== walletAddress) {
+      return false;
+    }
+    
+    return true;
+  });
+
+  // Sort cards based on active tab
+  const sortedCards = [...filteredCards].sort((a, b) => {
+    if (activeTab === 'votes') {
+      return b.votes - a.votes; // Sort by votes (most votes first)
+    } else if (activeTab === 'creation') {
+      // Convert dates to timestamps for comparison
+      const dateA = new Date(a.createdAt).getTime();
+      const dateB = new Date(b.createdAt).getTime();
+      return dateB - dateA; // Sort by creation time (newest first)
+    }
+    return 0; // Default order
+  });
+
+  // Check if user has voted for each card
+  const processedCards = sortedCards.map(card => ({
+    ...card,
+    hasVoted: card.voters?.includes(walletAddress),
+    // Extract ticker from attributes if available
+    ticker: card.attributes?.ticker || card.ticker || 'TRAP',
+    // Extract devFeePercentage from attributes if available
+    devFeePercentage: card.attributes?.devFeePercentage || card.devFeePercentage || '10'
+  }));
+
+  return (
+    <div className="min-h-screen bg-[#1b1d28] text-white">
+      {/* Main Content */}
+      <div className="container mx-auto px-4 py-8">
+        {/* Login prompt removed as it's already in the navbar */}
+
+        {/* Header removed as requested */}
+
+        {/* Voting Timer */}
+        <div className="text-center mb-6">
+          <div className="bg-[#121212] border border-[#2a2a2a] rounded-lg p-4 inline-block">
+            <div className="flex items-center justify-center">
+              <svg className="w-5 h-5 mr-2 text-[rgb(134,239,172)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+              <span className="text-[rgb(134,239,172)] font-bold">Voting ends in:</span>
+              <span className="ml-2 font-mono text-white bg-gray-800 px-3 py-1 rounded-md">{timeRemaining}</span>
+            </div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+
+        {/* Tabs */}
+        <div className="flex justify-center mb-6">
+          <div className="bg-[#121212] border border-[#2a2a2a] rounded-lg p-1 inline-flex">
+            <button 
+              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'votes' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
+              onClick={() => setActiveTab('votes')}
+            >
+              Most Votes
+            </button>
+            <button 
+              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'creation' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
+              onClick={() => setActiveTab('creation')}
+            >
+              Creation Time
+            </button>
+            <button 
+              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'my' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
+              onClick={() => setActiveTab('my')}
+            >
+              My Trapcards
+            </button>
+          </div>
+        </div>
+
+        {/* Search Bar */}
+        <div className="max-w-xl mx-auto mb-8">
+          <input
+            type="text"
+            placeholder="Search trap cards..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full bg-[#121212] border border-[#2a2a2a] rounded-md py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-[rgb(134,239,172)]"
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+        </div>
+
+        {/* Loading State */}
+        {loading && (
+          <div className="text-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[rgb(134,239,172)] mx-auto mb-4"></div>
+            <p className="text-gray-400">Loading trap cards...</p>
+          </div>
+        )}
+
+        {/* Error State */}
+        {apiError && (
+          <div className="text-center py-16">
+            <div className="text-5xl mb-4">⚠️</div>
+            <h3 className="text-2xl font-bold mb-2">Error Loading Cards</h3>
+            <p className="text-red-400 mb-6">{apiError}</p>
+            <button 
+              onClick={fetchCards}
+              className="bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black px-8 py-3 rounded-md font-bold text-lg inline-block"
+            >
+              Try Again
+            </button>
+          </div>
+        )}
+
+        {/* Cards Grid or Empty State */}
+        {!loading && !apiError && (
+          processedCards.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
+              {processedCards.slice(0, 9).map((card) => (
+                <div key={card._id} className="bg-[#121212] rounded-lg overflow-hidden shadow-xl p-4 border border-[#2a2a2a] hover:border-[rgb(134,239,172)] transition-all hover:-translate-y-1">
+                  <div className="flex mb-4">
+                    <div className="mr-4 relative">
+                      <div className="w-16 h-24 overflow-hidden rounded-md shadow-md">
+                        <TrapCard
+                          title={card.title}
+                          imageUrl={card.imageUrl}
+                          ticker={card.ticker}
+                          description=""
+                          devFeePercentage={card.devFeePercentage}
+                          smallPreview={true}
+                        />
+                      </div>
+                      <div className="absolute -top-1 -right-1 bg-red-900 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center shadow-md">
+                        <span className="mr-1">🔥</span>
+                        {card.votes}
+                      </div>
+                    </div>
+                    <div className="flex flex-col flex-grow">
+                      <h3 className="text-xl font-bold text-[rgb(134,239,172)] truncate">{card.title}</h3>
+                      <div className="text-sm text-gray-400 bg-gray-800 inline-block px-2 py-1 rounded-md mt-1">{card.ticker}</div>
+                      <div className="mt-auto">
+                        <p className="text-xs text-gray-500">Created: {new Date(card.createdAt).toLocaleDateString()}</p>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="border-t border-gray-700 my-3 pt-2">
+                    <p className="text-sm text-gray-400 line-clamp-2">{card.description}</p>
+                    <div className="flex justify-between mt-2 text-xs text-gray-400">
+                      <span>Creator: {formatWalletAddress(card.creator || '')}</span>
+                      <span>Dev Fee: {card.devFeePercentage}%</span>
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center mt-4">
+                    <button
+                      onClick={() => !card.hasVoted && handleVote(card._id)}
+                      className={`w-full py-2 rounded-md font-bold flex items-center justify-center ${
+                        card.hasVoted 
+                          ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
+                          : 'bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black'
+                      }`}
+                      disabled={card.hasVoted || voteLoading === card._id}
+                    >
+                      {voteLoading === card._id ? (
+                        <>
+                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                          </svg>
+                          Voting...
+                        </>
+                      ) : card.hasVoted ? (
+                        <>
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                          </svg>
+                          VOTED
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path>
+                          </svg>
+                          Vote
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-16">
+              <div className="text-5xl mb-4">🎭</div>
+              <h3 className="text-2xl font-bold mb-2">No Trap Cards Yet</h3>
+              <p className="text-gray-400 mb-6">Be the first to create a trap card!</p>
+              <Link 
+                href="/create" 
+                className="bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black px-8 py-3 rounded-md font-bold text-lg inline-block"
+              >
+                Create a Trap Card
+              </Link>
+            </div>
+          )
+        )}
+      </div>
     </div>
   );
 }
