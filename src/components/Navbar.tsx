@@ -74,7 +74,7 @@ const Navbar: React.FC = () => {
               </Link>
               
               <a 
-                href="https://x.com/onchain_sleuth" 
+                href="https://x.com/PumpSleuthApp" 
                 target="_blank" 
                 rel="noopener noreferrer" 
                 className="text-gray-300 hover:text-white transition-colors"
