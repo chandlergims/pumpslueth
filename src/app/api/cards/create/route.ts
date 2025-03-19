@@ -33,12 +33,20 @@ export async function POST(req: NextRequest) {
 
     // Parse request body
     const body = await req.json();
-    const { title, description, imageUrl, attributes } = body;
+    const { title, description, imageUrl, bountyAmount, attributes } = body;
 
     // Validate required fields
     if (!title || !description) {
       return NextResponse.json(
         { error: 'Title and description are required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate bounty amount
+    if (typeof bountyAmount !== 'number' || bountyAmount <= 0) {
+      return NextResponse.json(
+        { error: 'Bounty amount must be greater than 0 SOL' },
         { status: 400 }
       );
     }
@@ -49,10 +57,11 @@ export async function POST(req: NextRequest) {
       description,
       imageUrl,
       creator: decoded.walletAddress,
+      bountyAmount: bountyAmount,
+      status: 'open',
       attributes: attributes || {},
       votes: 0,
       voters: [],
-      isTokenized: false,
     });
 
     // Save to database

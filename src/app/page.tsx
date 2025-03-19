@@ -2,326 +2,372 @@
 
 import { useAuth } from "../context/AuthContext";
 import Link from "next/link";
-import { useState, useEffect, useCallback } from "react";
-import { getCards, voteForCard } from "../lib/api";
-import TrapCard from "../components/TrapCard";
+import { useState, useEffect } from "react";
+import { getBounties } from "../lib/bountyApi";
+import BountyCard from "../components/BountyCard";
+import { useRouter } from "next/navigation";
 
 export default function Home() {
-  const { isAuthenticated, isLoading, connectWallet, error, walletAddress } = useAuth();
-  const [activeTab, setActiveTab] = useState('votes');
+  const router = useRouter();
+  const { isAuthenticated, isLoading, walletAddress } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
-  const [cards, setCards] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [voteLoading, setVoteLoading] = useState<string | null>(null);
+  const [bounties, setBounties] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [activeFilter, setActiveFilter] = useState('all');
+  const [stats, setStats] = useState({
+    totalBounties: 0,
+    openBounties: 0,
+    solvedBounties: 0,
+    totalRewards: 0
+  });
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 12, // Show 12 bounties initially (2 rows of 6 on large screens)
+    total: 0,
+    pages: 0
+  });
 
-  // Format wallet address for display
-  const formatWalletAddress = (address: string) => {
-    if (!address) return '';
-    return `${address.substring(0, 6)}...${address.substring(address.length - 4)}`;
-  };
-
-  // Calculate time remaining until 1:00 AM EST
-  const calculateTimeRemaining = useCallback(() => {
-    const now = new Date();
-    const targetTime = new Date();
-    
-    // Set target time to 2:00 AM EST
-    targetTime.setHours(2, 0, 0, 0);
-    
-    // If it's already past 2:00 AM, set target to next day
-    if (now.getHours() >= 2) {
-      targetTime.setDate(targetTime.getDate() + 1);
-    }
-    
-    // Calculate difference in milliseconds
-    const diff = targetTime.getTime() - now.getTime();
-    
-    // Convert to hours, minutes, seconds
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-    
-    // Format as HH:MM:SS
-    return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
-  }, []);
-
-  // Update timer every second
+  // Fetch bounties from the API
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeRemaining(calculateTimeRemaining());
-    }, 1000);
-    
-    // Initialize timer immediately
-    setTimeRemaining(calculateTimeRemaining());
-    
-    return () => clearInterval(timer);
-  }, [calculateTimeRemaining]);
+    fetchBounties(1); // Reset to page 1 when filter changes
+  }, [activeFilter]);
 
-  // Fetch cards from the API regardless of authentication status
-  useEffect(() => {
-    fetchCards();
-  }, [activeTab]);
-
-  const fetchCards = async () => {
+  const fetchBounties = async (page = 1) => {
     try {
-      setLoading(true);
+      if (page === 1) {
+        setLoading(true);
+        setBounties([]); // Clear existing bounties when changing filters
+      } else {
+        setLoadingMore(true);
+      }
       setApiError(null);
       
-      // Determine sort parameter based on active tab
-      const sortParam = activeTab === 'votes' ? 'votes' : 'createdAt';
-      
-      const response = await getCards({
-        sort: sortParam,
+      // Build query parameters
+      const params: any = {
+        sort: 'createdAt',
         order: 'desc',
-        limit: 50
-      });
+        limit: pagination.limit,
+        page
+      };
       
-      setCards(response.cards);
+      // Add status filter if not 'all'
+      if (activeFilter === 'open' || activeFilter === 'solved') {
+        params.status = activeFilter;
+      }
+      
+      // Add creator filter if 'my'
+      if (activeFilter === 'my' && walletAddress) {
+        params.creator = walletAddress;
+      }
+      
+      const response = await getBounties(params);
+      
+      if (page === 1) {
+        setBounties(response.bounties);
+      } else {
+        setBounties(prev => [...prev, ...response.bounties]);
+      }
+      
+      setStats(response.stats);
+      setPagination({
+        ...response.pagination,
+        page // Update current page
+      });
     } catch (err: any) {
-      console.error('Error fetching cards:', err);
-      setApiError(err.message || 'Failed to load cards');
+      console.error('Error fetching bounties:', err);
+      setApiError(err.message || 'Failed to load bounties');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
-  // Handle voting for a card
-  const handleVote = async (cardId: string) => {
-    if (!isAuthenticated) return;
-    
-    try {
-      setVoteLoading(cardId);
-      await voteForCard(cardId);
-      
-      // Update the card in the local state
-      setCards(prevCards => 
-        prevCards.map(card => 
-          card._id === cardId 
-            ? { 
-                ...card, 
-                votes: card.votes + 1,
-                voters: [...card.voters, walletAddress],
-                hasVoted: true
-              } 
-            : card
-        )
-      );
-    } catch (err: any) {
-      console.error('Error voting for card:', err);
-      alert(err.message || 'Failed to vote for card');
-    } finally {
-      setVoteLoading(null);
-    }
+  // Load more bounties
+  const handleLoadMore = () => {
+    if (loadingMore || pagination.page >= pagination.pages) return;
+    fetchBounties(pagination.page + 1);
   };
 
-  // Filter cards based on active tab and search query
-  const filteredCards = cards.filter(card => {
+  // Filter bounties based on search query
+  const filteredBounties = bounties.filter(bounty => {
     // Filter by search query
-    if (searchQuery && !card.title.toLowerCase().includes(searchQuery.toLowerCase())) {
-      return false;
-    }
-    
-    // Filter by tab
-    if (activeTab === 'my' && card.creator !== walletAddress) {
+    if (searchQuery && !bounty.title.toLowerCase().includes(searchQuery.toLowerCase())) {
       return false;
     }
     
     return true;
   });
 
-  // Sort cards based on active tab
-  const sortedCards = [...filteredCards].sort((a, b) => {
-    if (activeTab === 'votes') {
-      return b.votes - a.votes; // Sort by votes (most votes first)
-    } else if (activeTab === 'creation') {
-      // Convert dates to timestamps for comparison
-      const dateA = new Date(a.createdAt).getTime();
-      const dateB = new Date(b.createdAt).getTime();
-      return dateB - dateA; // Sort by creation time (newest first)
-    }
-    return 0; // Default order
-  });
-
-  // Check if user has voted for each card
-  const processedCards = sortedCards.map(card => ({
-    ...card,
-    hasVoted: card.voters?.includes(walletAddress),
-    // Extract ticker from attributes if available
-    ticker: card.attributes?.ticker || card.ticker || 'TRAP',
-    // Extract devFeePercentage from attributes if available
-    devFeePercentage: card.attributes?.devFeePercentage || card.devFeePercentage || '10'
-  }));
-
   return (
-    <div className="min-h-screen bg-[#1b1d28] text-white">
-      {/* Main Content */}
-      <div className="container mx-auto px-4 py-8">
-        {/* Login prompt removed as it's already in the navbar */}
+    <div className="min-h-screen pt-20 bg-[#0f1225]">
+      {/* Escrow Status Banner */}
+      <div className="bg-[#10b981]/10 border-b border-[#10b981]/20 py-2">
+        <div className="container mx-auto px-4 flex items-center justify-between">
+          <div className="flex items-center">
+            <div className="w-3 h-3 rounded-full bg-[#10b981] mr-2 animate-pulse"></div>
+            <span className="text-[#10b981] text-sm font-medium">Escrow: <span className="font-bold">Offline</span></span>
+          </div>
+          <div className="text-gray-400 text-xs">
+            Free bounties for the first week! <Link href="/about" className="text-[#4f87ff] hover:underline">Learn more</Link>
+          </div>
+        </div>
+      </div>
+      
+      {/* Stats Section */}
+      <div className="container mx-auto px-4 py-6">
+        <div className="bg-gradient-to-r from-[#141836] to-[#1c2045] border border-[#2a2f52] rounded-lg p-5 shadow-lg">
+          <div className="flex flex-wrap justify-between items-center">
+            <div className="flex items-center mb-2 md:mb-0">
+              <div className="w-1 h-8 bg-[#4f87ff] mr-3"></div>
+              <h2 className="text-lg font-bold text-white">Platform Statistics</h2>
+            </div>
+            
+            <div className="flex flex-wrap gap-8">
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-[#4f87ff]/10 flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-[#4f87ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-white">{stats.totalBounties}</div>
+                  <div className="text-xs text-gray-400">Total Bounties</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-[#f59e0b]/10 flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-[#f59e0b]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[#f59e0b]">{stats.openBounties}</div>
+                  <div className="text-xs text-gray-400">Open Bounties</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-[#10b981]/10 flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-[#10b981]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[#10b981]">{stats.solvedBounties}</div>
+                  <div className="text-xs text-gray-400">Solved Bounties</div>
+                </div>
+              </div>
+              
+              <div className="flex items-center">
+                <div className="w-10 h-10 rounded-full bg-[#4f87ff]/10 flex items-center justify-center mr-3">
+                  <svg className="w-5 h-5 text-[#4f87ff]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                  </svg>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[#4f87ff]">{stats.totalRewards.toFixed(2)} SOL</div>
+                  <div className="text-xs text-gray-400">Total Rewards</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
-        {/* Header removed as requested */}
-
-        {/* Voting Timer */}
-        <div className="text-center mb-6">
-          <div className="bg-[#121212] border border-[#2a2a2a] rounded-lg p-4 inline-block">
-            <div className="flex items-center justify-center">
-              <svg className="w-5 h-5 mr-2 text-[rgb(134,239,172)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-              </svg>
-              <span className="text-[rgb(134,239,172)] font-bold">Voting ends in:</span>
-              <span className="ml-2 font-mono text-white bg-gray-800 px-3 py-1 rounded-md">{timeRemaining}</span>
+      {/* Main Content - Bounties */}
+      <div className="container mx-auto px-4 pb-16">
+        <div className="flex flex-col md:flex-row justify-between items-start gap-6 mb-8">
+          <div>
+            <div className="flex items-center mb-4">
+              <div className="w-1 h-6 bg-[#4f87ff] mr-3"></div>
+              <h1 className="text-2xl font-bold text-white">Explore Bounties</h1>
+            </div>
+            <p className="text-gray-400 max-w-2xl">
+              Find and track bad actors in the Solana ecosystem. Create bounties to incentivize the community to investigate scammers and fraudulent projects.
+            </p>
+          </div>
+          
+          <button
+            onClick={() => router.push('/create')}
+            className="px-4 py-2 bg-[#4f87ff] hover:bg-[#3b6de0] text-white font-medium rounded-md transition-colors flex items-center whitespace-nowrap"
+          >
+            <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+            </svg>
+            Create Bounty
+          </button>
+        </div>
+        
+        {/* Filters and Search */}
+        <div className="mb-8">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            {/* Filters */}
+            <div className="bg-[#141836] border border-[#2a2f52] rounded-lg p-1 inline-flex">
+              <button 
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeFilter === 'all' 
+                    ? 'bg-[#4f87ff] text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setActiveFilter('all')}
+              >
+                All Bounties
+              </button>
+              <button 
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeFilter === 'open' 
+                    ? 'bg-[#4f87ff] text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setActiveFilter('open')}
+              >
+                Open
+              </button>
+              <button 
+                className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                  activeFilter === 'solved' 
+                    ? 'bg-[#4f87ff] text-white' 
+                    : 'text-gray-400 hover:text-white'
+                }`}
+                onClick={() => setActiveFilter('solved')}
+              >
+                Solved
+              </button>
+              {isAuthenticated && (
+                <button 
+                  className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+                    activeFilter === 'my' 
+                      ? 'bg-[#4f87ff] text-white' 
+                      : 'text-gray-400 hover:text-white'
+                  }`}
+                  onClick={() => setActiveFilter('my')}
+                >
+                  My Bounties
+                </button>
+              )}
+            </div>
+            
+            {/* Search */}
+            <div className="relative w-full md:w-auto md:min-w-[300px]">
+              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                </svg>
+              </div>
+              <input
+                type="text"
+                placeholder="Search bounties..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-[#141836] border border-[#2a2f52] rounded-md py-2 pl-10 pr-4 text-white focus:outline-none focus:ring-2 focus:ring-[#4f87ff] focus:border-[#4f87ff]"
+              />
             </div>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex justify-center mb-6">
-          <div className="bg-[#121212] border border-[#2a2a2a] rounded-lg p-1 inline-flex">
-            <button 
-              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'votes' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
-              onClick={() => setActiveTab('votes')}
-            >
-              Most Votes
-            </button>
-            <button 
-              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'creation' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
-              onClick={() => setActiveTab('creation')}
-            >
-              Creation Time
-            </button>
-            <button 
-              className={`px-6 py-2 rounded-md font-bold ${activeTab === 'my' ? 'bg-[rgb(134,239,172)] text-black' : 'text-[#a0a0a0] hover:text-white'}`}
-              onClick={() => setActiveTab('my')}
-            >
-              My Trapcards
-            </button>
-          </div>
-        </div>
-
-        {/* Search Bar */}
-        <div className="max-w-xl mx-auto mb-8">
-          <input
-            type="text"
-            placeholder="Search trap cards..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#121212] border border-[#2a2a2a] rounded-md py-3 px-4 text-white focus:outline-none focus:ring-2 focus:ring-[rgb(134,239,172)]"
-          />
-        </div>
-
         {/* Loading State */}
         {loading && (
-          <div className="text-center py-16">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[rgb(134,239,172)] mx-auto mb-4"></div>
-            <p className="text-gray-400">Loading trap cards...</p>
+          <div className="flex flex-col items-center justify-center py-16">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-[#4f87ff] mb-4"></div>
+            <p className="text-gray-400">Loading bounties...</p>
           </div>
         )}
 
         {/* Error State */}
         {apiError && (
-          <div className="text-center py-16">
-            <div className="text-5xl mb-4">⚠️</div>
-            <h3 className="text-2xl font-bold mb-2">Error Loading Cards</h3>
+          <div className="text-center py-16 bg-red-900/20 border border-red-800 rounded-lg">
+            <svg className="w-16 h-16 text-red-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <h3 className="text-2xl font-bold mb-2">Error Loading Bounties</h3>
             <p className="text-red-400 mb-6">{apiError}</p>
             <button 
-              onClick={fetchCards}
-              className="bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black px-8 py-3 rounded-md font-bold text-lg inline-block"
+              onClick={() => fetchBounties(1)}
+              className="px-6 py-3 bg-[#4f87ff] hover:bg-[#3b6de0] text-white font-medium rounded-md transition-colors"
             >
               Try Again
             </button>
           </div>
         )}
 
-        {/* Cards Grid or Empty State */}
+        {/* Bounties Grid or Empty State */}
         {!loading && !apiError && (
-          processedCards.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-6xl mx-auto">
-              {processedCards.slice(0, 9).map((card) => (
-                <div key={card._id} className="bg-[#121212] rounded-lg overflow-hidden shadow-xl p-4 border border-[#2a2a2a] hover:border-[rgb(134,239,172)] transition-all hover:-translate-y-1">
-                  <div className="flex mb-4">
-                    <div className="mr-4 relative">
-                      <div className="w-16 h-24 overflow-hidden rounded-md shadow-md">
-                        <TrapCard
-                          title={card.title}
-                          imageUrl={card.imageUrl}
-                          ticker={card.ticker}
-                          description=""
-                          devFeePercentage={card.devFeePercentage}
-                          smallPreview={true}
-                        />
+          filteredBounties.length > 0 ? (
+            <>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {filteredBounties.map((bounty) => (
+                  <BountyCard
+                    key={bounty._id}
+                    id={bounty._id}
+                    title={bounty.title}
+                    description={bounty.description}
+                    imageUrl={bounty.imageUrl}
+                    creator={bounty.creator}
+                    bountyAmount={bounty.bountyAmount}
+                    status={bounty.status}
+                    createdAt={bounty.createdAt}
+                    votes={bounty.views || 0}
+                    hasVoted={false}
+                    onVote={() => {}}
+                    isVoting={false}
+                  />
+                ))}
+              </div>
+              
+              {/* Load More Button - Only show if there are more pages and we have at least 12 bounties */}
+              {pagination.page < pagination.pages && (
+                <div className="flex justify-center mt-8">
+                  <button
+                    onClick={handleLoadMore}
+                    disabled={loadingMore}
+                    className="px-6 py-3 bg-[#141836] border border-[#2a2f52] hover:bg-[#1c2045] text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loadingMore ? (
+                      <div className="flex items-center">
+                        <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+                        <span>Loading...</span>
                       </div>
-                      <div className="absolute -top-1 -right-1 bg-red-900 text-white px-2 py-1 rounded-full text-xs font-bold flex items-center shadow-md">
-                        <span className="mr-1">🔥</span>
-                        {card.votes}
-                      </div>
-                    </div>
-                    <div className="flex flex-col flex-grow">
-                      <h3 className="text-xl font-bold text-[rgb(134,239,172)] truncate">{card.title}</h3>
-                      <div className="text-sm text-gray-400 bg-gray-800 inline-block px-2 py-1 rounded-md mt-1">{card.ticker}</div>
-                      <div className="mt-auto">
-                        <p className="text-xs text-gray-500">Created: {new Date(card.createdAt).toLocaleDateString()}</p>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="border-t border-gray-700 my-3 pt-2">
-                    <p className="text-sm text-gray-400 line-clamp-2">{card.description}</p>
-                    <div className="flex justify-between mt-2 text-xs text-gray-400">
-                      <span>Creator: {formatWalletAddress(card.creator || '')}</span>
-                      <span>Dev Fee: {card.devFeePercentage}%</span>
-                    </div>
-                  </div>
-                  
-                  <div className="flex items-center mt-4">
-                    <button
-                      onClick={() => !card.hasVoted && handleVote(card._id)}
-                      className={`w-full py-2 rounded-md font-bold flex items-center justify-center ${
-                        card.hasVoted 
-                          ? 'bg-gray-700 text-gray-400 cursor-not-allowed' 
-                          : 'bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black'
-                      }`}
-                      disabled={card.hasVoted || voteLoading === card._id}
-                    >
-                      {voteLoading === card._id ? (
-                        <>
-                          <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-black" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                          </svg>
-                          Voting...
-                        </>
-                      ) : card.hasVoted ? (
-                        <>
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                          </svg>
-                          VOTED
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 10h4.764a2 2 0 011.789 2.894l-3.5 7A2 2 0 0115.263 21h-4.017c-.163 0-.326-.02-.485-.06L7 20m7-10V5a2 2 0 00-2-2h-.095c-.5 0-.905.405-.905.905 0 .714-.211 1.412-.608 2.006L7 11v9m7-10h-2M7 20H5a2 2 0 01-2-2v-6a2 2 0 012-2h2.5"></path>
-                          </svg>
-                          Vote
-                        </>
-                      )}
-                    </button>
-                  </div>
+                    ) : (
+                      <>
+                        <span>Load More</span>
+                        <span className="ml-2 text-gray-400 text-sm">
+                          ({filteredBounties.length} of {pagination.total})
+                        </span>
+                      </>
+                    )}
+                  </button>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           ) : (
-            <div className="text-center py-16">
-              <div className="text-5xl mb-4">🎭</div>
-              <h3 className="text-2xl font-bold mb-2">No Trap Cards Yet</h3>
-              <p className="text-gray-400 mb-6">Be the first to create a trap card!</p>
-              <Link 
-                href="/create" 
-                className="bg-[rgb(134,239,172)] hover:bg-[rgb(110,220,150)] text-black px-8 py-3 rounded-md font-bold text-lg inline-block"
+            <div className="text-center py-16 bg-[#141836] border border-[#2a2f52] rounded-lg">
+              <svg className="w-16 h-16 text-gray-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+              </svg>
+              <h3 className="text-2xl font-bold mb-2">No Bounties Found</h3>
+              <p className="text-gray-400 mb-6">
+                {searchQuery 
+                  ? 'No bounties match your search criteria.' 
+                  : activeFilter === 'my' 
+                    ? "You haven't created any bounties yet." 
+                    : activeFilter === 'open'
+                      ? "No open bounties available."
+                      : activeFilter === 'solved'
+                        ? "No solved bounties yet."
+                        : "Be the first to create a bounty!"}
+              </p>
+              <button 
+                onClick={() => router.push('/create')}
+                className="px-6 py-3 bg-[#4f87ff] hover:bg-[#3b6de0] text-white font-medium rounded-md transition-colors inline-flex items-center"
               >
-                Create a Trap Card
-              </Link>
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                Create a Bounty
+              </button>
             </div>
           )
         )}

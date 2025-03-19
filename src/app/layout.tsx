@@ -15,8 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TrapFun",
-  description: "Create, vote, and tokenize trap cards with your Phantom wallet",
+  title: "PumpSleuth",
   icons: {
     icon: '/sdf.png',
   },

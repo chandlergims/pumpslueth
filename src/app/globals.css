@@ -1,17 +1,41 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-  --primary: #f0b90b;
-  --primary-hover: #d9a70d;
-  --card-bg: #121212;
-  --card-bg-hover: #1a1a1a;
-  --card-border: #2a2a2a;
-  --card-border-hover: #f0b90b;
-  --text-primary: #ffffff;
-  --text-secondary: #a0a0a0;
-  --text-accent: #f0b90b;
+  /* Professional color scheme */
+  --background: #f8f9fa;
+  --foreground: #212529;
+  --primary: #0d6efd;
+  --primary-hover: #0b5ed7;
+  --secondary: #6c757d;
+  --success: #198754;
+  --danger: #dc3545;
+  --warning: #ffc107;
+  --info: #0dcaf0;
+  --light: #f8f9fa;
+  --dark: #212529;
+  
+  /* Dark theme colors - Updated to match reference */
+  --dark-bg: #0f1225;
+  --dark-surface: #141836;
+  --dark-surface-2: #1c2045;
+  --dark-border: #2a2f52;
+  --dark-border-hover: #3a3f6a;
+  --dark-text-primary: #f3f4f6;
+  --dark-text-secondary: #9ca3af;
+  
+  /* Accent colors - Updated to match reference */
+  --accent-blue: #3b82f6;
+  --accent-indigo: #6366f1;
+  --accent-purple: #8b5cf6;
+  --accent-green: #10b981;
+  --accent-yellow: #f59e0b;
+  --accent-red: #ef4444;
+  
+  /* Icon colors */
+  --icon-blue: #4f87ff;
+  --icon-teal: #38bdf8;
+  --icon-purple: #8b5cf6;
+  --icon-green: #10b981;
 }
 
 @theme inline {
@@ -21,109 +45,253 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: #1b1d28;
-  color: #ededed;
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--dark-bg);
+  color: var(--dark-text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
 }
 
-/* Box Office Card Styles */
-.box-office-card {
-  position: relative;
-  border-radius: 0.5rem;
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--dark-surface);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dark-border);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dark-border-hover);
+}
+
+/* Card styles */
+.card {
+  background: var(--dark-surface);
+  border-radius: 0.75rem;
+  border: 1px solid var(--dark-border);
   overflow: hidden;
-  transition: transform 0.2s ease-in-out;
+  transition: all 0.2s ease-in-out;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
 }
 
-.box-office-card:hover {
-  transform: translateY(-5px);
+.card:hover {
+  border-color: var(--dark-border-hover);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
 }
 
-.box-office-card-bg {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-size: cover;
-  background-position: center;
-  opacity: 0.1;
-  filter: blur(8px);
-  z-index: 0;
+/* Feature card styles */
+.feature-card {
+  background: var(--dark-surface);
+  border-radius: 0.75rem;
+  border: 1px solid var(--dark-border);
+  padding: 1.5rem;
+  transition: all 0.3s ease;
 }
 
-.box-office-pfp {
-  position: relative;
-  margin: 1rem auto;
-  display: block;
-  width: 100px;
-  height: 100px;
-  object-fit: cover;
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  z-index: 1;
+.feature-card:hover {
+  border-color: var(--dark-border-hover);
+  transform: translateY(-4px);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
 }
 
-.box-office-info {
-  position: relative;
-  z-index: 1;
-}
-
-.box-office-name-card {
-  font-weight: bold;
-  font-size: 1.25rem;
-  margin-bottom: 0.5rem;
-}
-
-.box-office-header {
+.feature-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 0.75rem;
-}
-
-.box-office-ticker-card {
-  font-weight: 500;
-}
-
-.box-office-price-card {
-  font-weight: 500;
-}
-
-.box-office-details {
+  justify-content: center;
   margin-bottom: 1rem;
 }
 
-.ticket-info-card {
-  font-size: 0.875rem;
-  color: #a0aec0;
+.feature-icon.blue {
+  background: rgba(79, 135, 255, 0.15);
+  color: var(--icon-blue);
 }
 
-.ticket-input-container-card {
-  display: flex;
+.feature-icon.teal {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--icon-teal);
+}
+
+.feature-icon.purple {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--icon-purple);
+}
+
+.feature-icon.green {
+  background: rgba(16, 185, 129, 0.15);
+  color: var(--icon-green);
+}
+
+/* Button styles */
+.btn {
+  display: inline-flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: center;
+  padding: 0.5rem 1rem;
+  font-weight: 500;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease-in-out;
+  cursor: pointer;
 }
 
-.ticket-amount-input-card {
-  width: 4rem;
-  padding: 0.375rem;
-  border-radius: 0.25rem;
-  background-color: #2d3748;
-  border: 1px solid #4a5568;
+.btn-primary {
+  background: var(--accent-blue);
   color: white;
 }
 
-.card-buy-button {
-  padding: 0.375rem 1rem;
-  border-radius: 0.25rem;
-  font-weight: 500;
-  transition: background-color 0.2s;
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: var(--secondary);
+  color: white;
+}
+
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: white;
+}
+
+.btn-warning {
+  background: var(--warning);
+  color: var(--dark);
+}
+
+.btn-info {
+  background: var(--info);
+  color: var(--dark);
+}
+
+/* Form styles */
+.form-control {
+  background: var(--dark-surface-2);
+  border: 1px solid var(--dark-border);
+  color: var(--dark-text-primary);
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.form-control:focus {
+  border-color: var(--accent-blue);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+/* Badge styles */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 9999px;
+}
+
+.badge-primary {
+  background: var(--accent-blue);
+  color: white;
+}
+
+.badge-success {
+  background: var(--accent-green);
+  color: white;
+}
+
+.badge-warning {
+  background: var(--accent-yellow);
+  color: white;
+}
+
+.badge-danger {
+  background: var(--accent-red);
+  color: white;
+}
+
+/* Animation utilities */
+.animate-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.animate-spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Glassmorphism */
+.glass {
+  background: rgba(20, 24, 54, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Gradient text */
+.gradient-text {
+  background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  display: inline-block;
+}
+
+/* Section styles */
+.section-title {
+  font-size: 2.25rem;
+  font-weight: 700;
+  text-align: center;
+  margin-bottom: 1rem;
+  color: var(--dark-text-primary);
+}
+
+.section-subtitle {
+  font-size: 1.125rem;
+  text-align: center;
+  max-width: 700px;
+  margin: 0 auto 3rem auto;
+  color: var(--dark-text-secondary);
+}
+
+/* Hero section */
+.hero-gradient {
+  background: linear-gradient(135deg, rgba(15, 18, 37, 0.8) 0%, rgba(28, 32, 69, 0.8) 100%);
+}
+
+/* Container with max width */
+.container-narrow {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1rem;
 }
