@@ -15,21 +15,19 @@ export default function CreatePage() {
   const [imageUrl, setImageUrl] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [authError, setAuthError] = useState<boolean>(false);
   const [imageUploading, setImageUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Redirect to home if not authenticated
-  React.useEffect(() => {
-    if (!isAuthenticated && !walletAddress) {
-      router.push('/');
-    }
-  }, [isAuthenticated, walletAddress, router]);
+  // We're removing the automatic redirect to allow users to see the form
+  // and get the error message when they try to submit
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!isAuthenticated || !walletAddress) {
       setError('Please connect your wallet to create a bounty');
+      setAuthError(true);
       return;
     }
     
@@ -67,6 +65,12 @@ export default function CreatePage() {
       console.error('Error creating bounty:', err);
       setError(err.message || 'Failed to create bounty');
       setIsSubmitting(false);
+    }
+  };
+  
+  const handleButtonClick = () => {
+    if (!isAuthenticated) {
+      setAuthError(true);
     }
   };
   
@@ -229,12 +233,19 @@ export default function CreatePage() {
                 </div>
               )}
               
-              {/* Submit Button */}
-              <div className="flex justify-end">
+              {/* Submit Button and Auth Error */}
+              <div className="flex flex-col items-end">
                 <button
-                  type="submit"
+                  type="button" // Changed from submit to button to prevent form submission
                   className="px-6 py-3 bg-[#4f87ff] hover:bg-[#3b6de0] text-white font-medium rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={isSubmitting || !isAuthenticated}
+                  onClick={() => {
+                    if (!isAuthenticated) {
+                      setAuthError(true);
+                    } else {
+                      handleSubmit({ preventDefault: () => {} } as React.FormEvent);
+                    }
+                  }}
+                  disabled={isSubmitting}
                 >
                   {isSubmitting ? (
                     <div className="flex items-center">
@@ -245,6 +256,13 @@ export default function CreatePage() {
                     'Create Bounty'
                   )}
                 </button>
+                
+                {/* Authentication Error Message */}
+                {authError && !isAuthenticated && (
+                  <div className="mt-2 text-red-500 text-sm font-medium">
+                    Must be authenticated to use this feature
+                  </div>
+                )}
               </div>
             </form>
           </div>
